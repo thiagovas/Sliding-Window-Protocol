@@ -1,9 +1,13 @@
+# coding: utf-8
 # client.py
 
 import pjd                   # Importa seu módulo
 filename = 'recebido.txt'
+PORT=55555                 # Porto onde o servidor vai esperar por conexões
+SRV="localhost"      # Nome da máquina onde o servidor será executado
 
-s = pjd.activeOpen()        # Abre uma conexão
+
+s = pjd.activeOpen(SRV,PORT) # Abre uma conexão
 
 with open(filename, 'wb') as f:
     print 'Arquivo aberto/criado'
