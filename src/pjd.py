@@ -25,8 +25,9 @@ def passiveOpen(port):
     Returns: A transmitter object and the client address.
   '''
   
-  ret = Transmitter('localhost', port)
-  return ret, 'localhost'
+  ret = Transmitter(port)
+  addr = ret.accept(10)
+  return ret, addr
 
 
 
@@ -39,8 +40,36 @@ class Receiver:
     self.time_limit=2
     self.host = host
     self.port = port
+    self.destination = (self.host, self.port)
     self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    self.udp.bind((self.host, self.port))
+    self.udp.bind(self.destination)
+    self.udp.settimeout(self.time_limit)
+    if not self.send_and_wait("HelloolleH", 10):
+      raise Exception("Server not reachable.")
+  
+  
+  def send_and_wait(self, content, max_tries):
+    '''
+      This function is used to establish when the transmitter
+      will start or finish a stream of data.
+
+      It will try {max_tries} times before gives up.
+    '''
+    
+    success=False
+    tried=0
+    while tried < max_tries:
+      self.udp.sendto(content, self.destination)
+      tried += 1
+      try:
+        data, addr = self.udp.recvfrom(6)
+        if data=="ACKKCA":
+          success=True
+          self.send_ack(addr)
+          break
+      except socket.timeout:
+        continue
+    return success
   
   
   def recv(self, nbytes):
@@ -68,13 +97,11 @@ class Transmitter:
   '''
     This class represents the transmitter.
   '''
-  def __init__(self, host, port):
+  def __init__(self, port):
     self.time_limit = 2
     self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    self.destination = (host, port)
+    self.port = port
     self.udp.settimeout(self.time_limit)
-    if not self.send_and_wait("HelloolleH", 10):
-      raise Exception("Client not reachable.")
   
   
   def send(self, content):
@@ -85,7 +112,10 @@ class Transmitter:
     '''
       This function is used to establish when the transmitter
       will start or finish a stream of data.
+
+      It will try {max_tries} times before gives up.
     '''
+    
     success=False
     tried=0
     while tried < max_tries:
@@ -99,6 +129,23 @@ class Transmitter:
       except socket.timeout:
         continue
     return success
+  
+  
+  def accept(self, max_tries):
+    # TODO: Check for errors on the package received.
+    tried=0
+    while tried < max_tries:
+      tried += 1
+      try:
+        data, addr = self.udp.recvfrom(10)
+        self.destination = (addr, self.port)
+      except socket.timeout:
+        continue
+      
+      if data=="HelloolleH":
+        self.send_and_wait("ACKKCA", 10)
+        return addr
+    return ""
   
   
   def close(self):
