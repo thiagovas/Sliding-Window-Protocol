@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-iimport time
+import time
 import socket
 from threading import Thread, Lock
 from heapq import heappush, heappop, nsmallest
@@ -144,6 +144,10 @@ class Transmitter:
   '''
   def __init__(self, port):
     self.begin_window=0
+
+    # The end index is a valid index, in other words, we do not use the indexes
+    # as the text book (petersen), end_window is the last valid position
+    # of the window
     self.end_window=0
     self.window_sz=10
     
@@ -191,12 +195,14 @@ class Transmitter:
     
     content = list(content)
     
+    self.end_window = min(len(content)-1, self.window_sz)
+    
     # Creating a thread to keep sending packages.
-    send_thread = Thread(target = self.send_thread, args=(content))
+    send_thread = Thread(target = self.send_thread, args=(content,))
     
     # Creating another thread to keep receiving the ACKs and updating 
     # the limits of the window
-    ack_thread = Thread(target = self.ack_thread, args=())
+    ack_thread = Thread(target = self.ack_thread, args=(len(content)-1,))
     
     send_thread.start()
     ack_thread.start()
@@ -205,10 +211,12 @@ class Transmitter:
     
   
   def send_thread(self, content):
+    # TODO: Remember to lock the mutex when using the limits of the window
     pass
-   
   
-  def ack_thread(self):
+  
+  def ack_thread(self, content_sz):
+    # TODO: Remember to lock the mutex when updating the limits of the window
     acked = []
     while self.begin_window < self.window_sz:
       time.sleep(0.01)
@@ -217,7 +225,13 @@ class Transmitter:
       if not self.check_package(pck):
         continue
       neue_id = int(pck[1])
-      heappush
+      
+      if neue_id >= self.begin_window and neue_id <= self.end_window:
+        heappush(acked, neue_id)
+        while len(acked) > 0 and self.begin_window == nsmallest(1, acked)[0]:
+          heappop(acked)
+          self.begin_window+=1
+        self.end_window = min(content_sz-1, self.begin_window+self.window_sz-1)
       
   
   def send_and_wait(self, content, max_tries):
