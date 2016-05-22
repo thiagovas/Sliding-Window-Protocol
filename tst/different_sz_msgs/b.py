@@ -13,13 +13,9 @@ udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 dest = (HOST, PORT)
 udp.bind(dest)
 
-data, addr = udp.recvfrom(128)
-print "A: ", data
+data, addr = udp.recvfrom(256)
+print 'A(' + str(addr[0]) + '): ', data
 
-msg = "B2B2"
-udp.sendto(msg, addr)
-data, addr = udp.recvfrom(128)
-print "A: ", data
+data, addr = udp.recvfrom(256)
+print 'A(' + str(addr[0]) + '): ', data
 
-msg = "UE?"
-udp.sendto(msg, addr)

@@ -14,9 +14,5 @@ dest = (HOST, PORT)
 msg = "Oi, como vai voce?"
 udp.sendto(msg, dest)
 
-data, addr = udp.recvfrom(128)
-print "B: ", data
-
-msg = "abcd do efg"
+msg = "Entao ta :)"
 udp.sendto(msg, dest)
-print "B: ", udp.recvfrom(128)[0]
