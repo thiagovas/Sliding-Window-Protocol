@@ -64,6 +64,9 @@ class Receiver:
     self.end_window=0
     self.window_sz=10
     
+    # to_be_received - number of packages the transmitter is going to send.
+    # Setting infinite to "to_be_received"
+    self.to_be_received=10000000000
     self.time_limit=4
     self.host = host
     self.port = port
@@ -157,7 +160,7 @@ class Receiver:
     self.end_window = min(nbytes-1, self.window_sz-1)
     cont=0
     
-    while True:
+    while len(acked) < nbytes:
       # 1) Receive the package
       data=""
       addr=""
@@ -167,7 +170,6 @@ class Receiver:
         data, addr = self.udp.recvfrom(32)
       except socket.timeout:
         cont+=1
-        print cont
         continue
       
       cont = 0
@@ -177,6 +179,15 @@ class Receiver:
       elif data=="BYEEYB":
         self.send_ack(addr)
         break
+      elif data.split(' ')[0]=='ADDDDA':
+        try:
+          num_pcks = int(data.split(' ')[1])
+          if num_pcks > 0:
+            self.to_be_received += num_pcks
+            nbytes = min(nbytes, self.to_be_received)
+            self.send_ack(addr)
+        except ValueError:
+          continue
       else:
         if self.begin_window >= nbytes:
           break
@@ -191,7 +202,7 @@ class Receiver:
         if neue_id in acked or neue_id < self.begin_window:
           self.udp.sendto(self.mount_package(neue_id), addr)
           continue
-        
+          
         # If the id number is inside the limits of the window...
         if neue_id >= self.begin_window and neue_id <= self.end_window:
           acked[neue_id] = pck[2]
@@ -202,7 +213,7 @@ class Receiver:
           self.begin_window += 1
           self.end_window += 1
         self.end_window = min(self.end_window, nbytes-1)
-
+    
     for key, value in acked.iteritems():
       content += value
     return content
@@ -281,9 +292,7 @@ class Transmitter:
     #   using both the id number and the content of the package
     
     try:
-      print "pck id:", package[1]
       int(package[1])
-      
     except ValueError:
       return False
     return True
@@ -297,6 +306,8 @@ class Transmitter:
       return
     
     content = list(content)
+    if not self.send_and_wait('ADDDDA ' + str(len(content)), 2):
+      raise Exception("Client not reachable.")
     
     self.end_window = min(len(content)-1, self.window_sz-1)
     
