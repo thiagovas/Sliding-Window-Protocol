@@ -3,7 +3,6 @@
 
 import time
 import socket
-import checksum
 from threading import Thread, Lock
 from heapq import heappush, heappop, nsmallest
 
@@ -341,7 +340,11 @@ class Transmitter:
       self.mutex.release()
       
       time.sleep(0.005)
-      data, addr = self.udp.recv(32)
+      try:
+        data, addr = self.udp.recvfrom(64)
+      except socket.timeout:
+        continue
+
       pck = self.unmount_package(data)
       if not self.check_package(pck):
         continue
