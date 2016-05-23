@@ -154,6 +154,8 @@ class Receiver:
     #      "ACKKCA [id]" where id is the id number received from the transmitter.
     # 3) Update the window's limits accordingly
     
+    self.begin_window=0
+    self.end_window=0
     acked = {}
     content=""
     self.end_window = min(nbytes-1, self.window_sz-1)
@@ -163,10 +165,12 @@ class Receiver:
       # 1) Receive the package
       data=""
       addr=""
+      if len(content)+len(acked) >= nbytes:
+        break
       try:
         if cont == 2:
           break
-        data, addr = self.udp.recvfrom(32)
+        data, addr = self.udp.recvfrom(64)
       except socket.timeout:
         cont+=1
         continue
@@ -309,6 +313,10 @@ class Transmitter:
     '''
       Sends {content} to the destination using the sliding window protocol.
     '''
+    self.begin_window=0
+    self.end_window=0
+    self.time_spans = {}
+    
     if len(content)==0:
       return
     
@@ -332,6 +340,7 @@ class Transmitter:
     ack_thread.start()
     send_thread.join()
     ack_thread.join()
+    print 'Leaving All'
     
   
   def send_thread(self, content):
@@ -343,6 +352,7 @@ class Transmitter:
       self.mutex.acquire()
       print self.begin_window, len(content)
       if self.begin_window == len(content):
+        self.mutex.release()
         break
       
       for key, value in self.time_spans.iteritems():
