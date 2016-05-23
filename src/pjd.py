@@ -64,6 +64,13 @@ class Receiver:
     self.end_window=0
     self.window_sz=10
     
+    self.timespent = time.time()
+    self.total_bytes_sent=0
+    self.total_bytes_received=0
+    self.total_packages_sent=0
+    self.total_retransmittions=0
+    self.total_acks_received=0
+    
     # to_be_received - number of packages the transmitter is going to send.
     # Setting infinite to "to_be_received"
     self.to_be_received=10000000000
@@ -88,12 +95,16 @@ class Receiver:
     success=False
     tried=0
     while tried < max_tries:
+      self.total_bytes_sent += len(content)
+      self.total_packages_sent += 1
       self.udp.sendto(content, self.destination)
       tried += 1
       try:
         data, addr = self.udp.recvfrom(6)
         if data=="ACKKCA":
           success=True
+          self.total_acks_received+=1
+          self.total_bytes_received+=6
           self.send_ack(addr)
           break
       except socket.timeout:
@@ -117,14 +128,9 @@ class Receiver:
   
   
   def check_package(self, package):
-    # TODO: ----DONE
-    # * Check the id_number:
-    #    - Check if it's a number
-    #    - Check if the number is inside the limits of the window
-    # 
-    # * Check the package using the checksum, make sure the checksum is generated
-    #   using both the id number and the content of the package
-    
+    '''
+      Function that makes sure the package isn't corrupted.
+    '''
     
     try: 
       int(package[0])
@@ -135,17 +141,14 @@ class Receiver:
     if(checkSum(package[0] + package[2]) == int(package[1])):
       return True
     return False
-
+  
   
   def recv(self, nbytes):
     '''
       Function that receives nbytes and returns them.
     '''
     
-    #TODO:
-    # Test for errors
-    # DONE:
-    # Implement this function using the sliding window algorithm
+    # Implemented this function using the sliding window algorithm
     # 1) Receive the package
     # 2) Checks the package is well-formed and check it using the checksum
     # 2) If the id number comes inside or before than the window interval,
@@ -171,6 +174,7 @@ class Receiver:
         if cont == 2:
           break
         data, addr = self.udp.recvfrom(64)
+        self.total_bytes_received += len(data)
       except socket.timeout:
         cont+=1
         continue
@@ -203,6 +207,8 @@ class Receiver:
         # If the package arrived before, just return the ack.
         # Or if the package id is less than the limits of the window.
         if neue_id in acked or neue_id < self.begin_window:
+          self.total_retransmittions += 1
+          self.total_bytes_sent += self.mount_package(neue_id)
           self.udp.sendto(self.mount_package(neue_id), addr)
           continue
         
@@ -216,6 +222,8 @@ class Receiver:
         while len(acked) > 0 and self.begin_window == min(acked, key=acked.get):
           content+=acked[self.begin_window]
           del acked[self.begin_window]
+          self.total_bytes_sent += len(self.mount_package(neue_id))
+          self.total_packages_sent += 1
           self.udp.sendto(self.mount_package(neue_id), addr)
           self.begin_window += 1
           self.end_window += 1
@@ -226,16 +234,28 @@ class Receiver:
     return content
   
   
+  def printstats(self):
+    print 'Time Spent: ', self.timespent
+    print 'Total Bytes Sent (including headers and control variables): ', self.total_bytes_sent
+    print 'Total Bytes Received (including headers and control variables): ', self.total_bytes_received
+    print 'Total Packages Sent: ', self.total_packages_sent
+    print 'Total Retransmittions: ', self.total_retransmittions
+    print 'Total ACKs received: ', self.total_acks_received
+
   def send_ack(self, addr):
     '''
       Function that sends an ACK without any id;
       Used to tell the transmitter that the receiver is alive,
       or to say goodbye for example.
     '''
+    self.total_packages_sent += 1
+    self.total_bytes_sent += 6
     self.udp.sendto("ACKKCA", addr)
     
-    
+  
   def close(self):
+    self.timespent = time.time()-self.timespent
+    self.printstats()
     self.udp.close()
   
   
@@ -259,6 +279,13 @@ class Transmitter:
     # Dictionary that helps to decide when to resend a package.
     self.time_spans = {}
     
+    self.timespent = time.time()
+    self.total_bytes_sent=0
+    self.total_bytes_received=0
+    self.total_packages_sent=0
+    self.total_retransmittions=0
+    self.total_acks_received=0
+  
     self.mutex = Lock()
     self.time_limit = 5
     self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -288,22 +315,18 @@ class Transmitter:
   
   
   def check_package(self, package):
-    # TODO:
-    # Test for errors
-    # DONE:
+    '''
+      Function that checks if the ACK package received is not corrupted.
+    '''
     # * Check the id_number:
     #    - Check if it's a number
-    #    - Check if the number is inside the limits of the window
-    # 
-    # * Check the package using the checksum, make sure the checksum is generated
-    #   using both the id number and the content of the package
     
     try:
       int(package[1])
     except ValueError:
       return False
     return True
-    
+  
   
   def send(self, content):
     '''
@@ -337,7 +360,6 @@ class Transmitter:
     send_thread.join()
     ack_thread.join()
     
-    irint 'Leaving All'
   
   def send_thread(self, content):
     '''
@@ -354,6 +376,8 @@ class Transmitter:
         if time.time()-value > 1 and value != -1:
           checksum = checkSum(str(key)+content[key])
           pck = self.mount_package(key, checksum, content[key])
+          self.total_bytes_sent += len(pck)
+          self.total_packages_sent += 1
           self.udp.sendto(pck, self.destination)
           self.time_spans[key] = time.time()
       self.mutex.release()
@@ -374,12 +398,14 @@ class Transmitter:
       time.sleep(0.005)
       try:
         data, addr = self.udp.recvfrom(64)
+        self.total_bytes_received += len(data)
       except socket.timeout:
         continue
       
       pck = self.unmount_package(data)
       if not self.check_package(pck):
         continue
+      self.total_acks_received += 1
       neue_id = int(pck[1])
       
       self.mutex.acquire()
@@ -424,12 +450,16 @@ class Transmitter:
     success=False
     tried=0
     while tried < max_tries:
+      self.total_bytes_sent += len(content)
+      self.total_packages_sent += 1
       self.udp.sendto(content, self.destination)
       tried += 1
       try:
         data, addr = self.udp.recvfrom(6)
+        self.total_bytes_received += len(data)
         if data=="ACKKCA":
           success=True
+          self.total_acks_received += 1
           break
       except socket.timeout:
         continue
@@ -442,6 +472,7 @@ class Transmitter:
       tried += 1
       try:
         data, addr = self.udp.recvfrom(10)
+        self.total_bytes_received += data
         self.destination = addr
       except socket.timeout:
         continue
@@ -452,6 +483,16 @@ class Transmitter:
     return ""
   
   
+  def printstats(self):
+    print 'Time Spent: ', self.timespent
+    print 'Total Bytes Sent (including headers and control variables): ', self.total_bytes_sent
+    print 'Total Bytes Received (including headers and control variables): ', self.total_bytes_received
+    print 'Total Packages Sent: ', self.total_packages_sent
+    print 'Total ACKs received: ', self.total_acks_received
+  
+
   def close(self):
     self.send_and_wait("BYEEYB", 10)
+    self.timespent = time.time()-self.timespent
+    self.printstats()
     self.udp.close()
