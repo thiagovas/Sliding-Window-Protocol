@@ -69,7 +69,6 @@ class Receiver:
     self.total_bytes_received=0
     self.total_packages_sent=0
     self.total_retransmittions=0
-    self.total_acks_received=0
     
     # to_be_received - number of packages the transmitter is going to send.
     # Setting infinite to "to_be_received"
@@ -103,7 +102,6 @@ class Receiver:
         data, addr = self.udp.recvfrom(6)
         if data=="ACKKCA":
           success=True
-          self.total_acks_received+=1
           self.total_bytes_received+=6
           self.send_ack(addr)
           break
@@ -240,7 +238,6 @@ class Receiver:
     print 'Total Bytes Received (including headers and control variables): ', self.total_bytes_received
     print 'Total Packages Sent: ', self.total_packages_sent
     print 'Total Retransmittions: ', self.total_retransmittions
-    print 'Total ACKs received: ', self.total_acks_received
 
   def send_ack(self, addr):
     '''
@@ -472,7 +469,7 @@ class Transmitter:
       tried += 1
       try:
         data, addr = self.udp.recvfrom(10)
-        self.total_bytes_received += data
+        self.total_bytes_received += len(data)
         self.destination = addr
       except socket.timeout:
         continue
