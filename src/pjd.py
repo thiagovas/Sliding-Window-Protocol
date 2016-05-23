@@ -77,12 +77,20 @@ class Receiver:
       except socket.timeout:
         continue
     return success
-  
-  def mount_package(self, id_number, checksum, content):
-    return str(id_number) + ' ' + str(checksum) + ' ' + str(content)
+ 
+
+  def mount_package(self, id_number):
+    '''
+      This function receives an id_number and mounts the ACK package,
+      to be sent to the transmitter.
+    '''
+    return 'ACKKCA ' + str(id_number)
   
 
   def unmount_package(self, package):
+    '''
+      This function unmounts the package received from the transmitter.
+    '''
       package.split(' ')
   
   
@@ -98,21 +106,21 @@ class Receiver:
     pass
   
   
-  def send_thread(self, content):
-    pass
-   
-  
-  def ack_thread(self):
-    # TODO:
-    # 1) Call check_package
+  def recv(self, nbytes):
+    '''
+      Function that receives nbytes and returns them.
+    '''
+    
+    #TODO:
+    # Implement this function using the sliding window algorithm
+    # 1) Receive the package
+    # 2) Checks the package is well-formed and check it using the checksum
     # 2) If the id number comes inside or before than the window interval,
     #    return the ack.
-    # 2.1) Update the window's limits accordingly
-    # 3) Else, just ignore the package.
-    pass
-
-  
-  def recv(self, nbytes):
+    # 2.1) Remember the ack package is a string formed of the following style:
+    #      "ACKKCA [id]" where id is the id number received from the transmitter.
+    # 3) Update the window's limits accordingly
+    
     while True:
       data, addr = self.udp.recvfrom(nbytes)
       if data=="HelloolleH":
@@ -122,10 +130,6 @@ class Receiver:
         break
       else:
         return data
-  
-  
-  def send_ack(self, addr):
-    self.udp.sendto("ACKKCA", addr)
   
   
   def close(self):
@@ -149,6 +153,9 @@ class Transmitter:
     # of the window
     self.end_window=0
     self.window_sz=10
+    
+    # Dictionary that helps to decide when to resend a package.
+    self.time_spans = {}
     
     self.mutex = Lock()
     self.time_limit = 5
@@ -186,24 +193,29 @@ class Transmitter:
     # * Check the package using the checksum, make sure the checksum is generated
     #   using both the id number and the content of the package
     
-    pass
+    return true
     
   
   def send(self, content):
     '''
       Sends {content} to the destination using the sliding window protocol.
     '''
+    if len(content)==0:
+      return
     
     content = list(content)
     
-    self.end_window = min(len(content)-1, self.window_sz)
+    self.end_window = min(len(content)-1, self.window_sz-1)
     
     # Creating a thread to keep sending packages.
     send_thread = Thread(target = self.send_thread, args=(content,))
     
     # Creating another thread to keep receiving the ACKs and updating 
     # the limits of the window
-    ack_thread = Thread(target = self.ack_thread, args=(len(content)-1,))
+    ack_thread = Thread(target = self.ack_thread, args=(len(content),))
+    
+    for v in range(self.end_window+1):
+      self.time_spans[v] = 0
     
     send_thread.start()
     ack_thread.start()
@@ -213,27 +225,62 @@ class Transmitter:
   
   def send_thread(self, content):
     # TODO: Remember to lock the mutex when using the limits of the window
-    pass
+    while True:
+      self.mutex.acquire()
+      if self.begin_window == len(content):
+        break
+      self.mutex.release()
+      
+      for key, value in self.time_spans.iteritems():
+        if time.time()-value > 1 and value != -1:
+          self.udp.sendto(self.mount_package(key, checksum, content[key]), self.destination)
+          self.time_spans[key] = time.time()
   
   
   def ack_thread(self, content_sz):
-    # TODO: Remember to lock the mutex when updating the limits of the window
     acked = []
-    while self.begin_window < self.window_sz:
-      time.sleep(0.01)
+    while True:
+      self.mutex.acquire()
+      if self.begin_window >= self.window_sz:
+        break
+      self.mutex.release()
+      
+      time.sleep(0.005)
       data, addr = self.udp.recv(32)
       pck = self.unmount_package(data)
       if not self.check_package(pck):
         continue
       neue_id = int(pck[1])
       
+      self.mutex.acquire()
+      # If the id number is inside the limits of the window...
       if neue_id >= self.begin_window and neue_id <= self.end_window:
         heappush(acked, neue_id)
+        
+        # Putting -1 on the time spans vector to make sure
+        # this package won't be sent anymore
+        if self.begin_window != nsmallest(1, acked)[0]:
+          self.time_spans[self.neue_id] = -1
+        
+        # Updating the window's limits accordingly.
         while len(acked) > 0 and self.begin_window == nsmallest(1, acked)[0]:
           heappop(acked)
+          del self.time_spans[self.begin_window]
           self.begin_window+=1
-        self.end_window = min(content_sz-1, self.begin_window+self.window_sz-1)
+        
+        # Putting zero on the new packages to be sent to the receiver.
+        while True:
+          self.time_spans[self.end_window] = 0
+          self.end_window += 1
+          
+          if self.end_window == content_sz-1:
+            break
+          if self.end_window == self.begin_window+self.window_sz-1:
+            break
+        self.time_spans[self.end_window] = 0
+      self.mutex.release()
       
+  
   
   def send_and_wait(self, content, max_tries):
     '''
