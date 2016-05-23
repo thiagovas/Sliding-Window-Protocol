@@ -64,7 +64,7 @@ class Receiver:
     self.end_window=0
     self.window_sz=10
     
-    self.time_limit=5
+    self.time_limit=4
     self.host = host
     self.port = port
     self.destination = (self.host, self.port)
@@ -155,11 +155,23 @@ class Receiver:
     acked = {}
     content=""
     self.end_window = min(nbytes-1, self.window_sz-1)
-    
+    cont=0
     
     while True:
       # 1) Receive the package
-      data, addr = self.udp.recvfrom(32)
+      data=""
+      addr=""
+      try:
+        if cont == 2:
+          break
+        data, addr = self.udp.recvfrom(32)
+      except socket.timeout:
+        cont+=1
+        print cont
+        continue
+      
+      cont = 0
+      
       if data=="HelloolleH":
         self.send_ack(addr)
       elif data=="BYEEYB":
@@ -183,7 +195,6 @@ class Receiver:
         # If the id number is inside the limits of the window...
         if neue_id >= self.begin_window and neue_id <= self.end_window:
           acked[neue_id] = pck[2]
-        
         
         # Updating the window's limits accordingly.
         while len(acked) > 0 and self.begin_window == nsmallest(1, acked)[0]:
@@ -269,17 +280,13 @@ class Transmitter:
     # * Check the package using the checksum, make sure the checksum is generated
     #   using both the id number and the content of the package
     
-    try: 
-      int(package[0])
+    try:
+      print "pck id:", package[1]
+      int(package[1])
       
     except ValueError:
       return False
-    
-    pck_id = int(package[0])
-    if(pck_id >= self.begin_window and pck_id <= self.end_window):
-      if(checkSum(package[0] + package[2]) == int(package[1])):
-        return True
-    return False
+    return True
     
   
   def send(self, content):
@@ -321,6 +328,7 @@ class Transmitter:
       
       for key, value in self.time_spans.iteritems():
         if time.time()-value > 1 and value != -1:
+          print "value:", len(content), key
           checksum = checkSum(str(key)+content[key])
           pck = self.mount_package(key, checksum, content[key])
           self.udp.sendto(pck, self.destination)
@@ -335,13 +343,15 @@ class Transmitter:
     acked = []
     while True:
       self.mutex.acquire()
-      if self.begin_window >= self.window_sz:
+      if self.begin_window == content_sz:
+        self.mutex.release()
         break
       self.mutex.release()
       
       time.sleep(0.005)
       try:
         data, addr = self.udp.recvfrom(64)
+        print data
       except socket.timeout:
         continue
 
@@ -358,7 +368,7 @@ class Transmitter:
         # Putting -1 on the time spans vector to make sure
         # this package won't be sent anymore
         if self.begin_window != nsmallest(1, acked)[0]:
-          self.time_spans[self.neue_id] = -1
+          self.time_spans[neue_id] = -1
         
         # Updating the window's limits accordingly.
         while len(acked) > 0 and self.begin_window == nsmallest(1, acked)[0]:
@@ -368,14 +378,19 @@ class Transmitter:
         
         # Putting zero on the new packages to be sent to the receiver.
         while True:
-          self.time_spans[self.end_window] = 0
-          self.end_window += 1
+          print self.time_spans
+          print "1:", self.begin_window, self.end_window, content_sz
+	  if not self.end_window in self.time_spans: 
+            self.time_spans[self.end_window] = 0
           
           if self.end_window == content_sz-1:
+            print "win:", self.end_window, content_sz-1
             break
-          if self.end_window == self.begin_window+self.window_sz-1:
+          if self.end_window >= self.begin_window+self.window_sz-1:
+            print "break 2"
             break
-        self.time_spans[self.end_window] = 0
+          self.end_window += 1
+       
       self.mutex.release()
       
   
