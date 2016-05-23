@@ -177,10 +177,6 @@ class Receiver:
       
       cont = 0
       
-      print data
-      print acked
-      print nbytes
-      
       if data=="HelloolleH":
         self.send_ack(addr)
       elif data=="BYEEYB":
@@ -340,8 +336,8 @@ class Transmitter:
     ack_thread.start()
     send_thread.join()
     ack_thread.join()
-    print 'Leaving All'
     
+    irint 'Leaving All'
   
   def send_thread(self, content):
     '''
@@ -350,14 +346,12 @@ class Transmitter:
     '''
     while True:
       self.mutex.acquire()
-      print self.begin_window, len(content)
       if self.begin_window == len(content):
         self.mutex.release()
         break
       
       for key, value in self.time_spans.iteritems():
         if time.time()-value > 1 and value != -1:
-          print "value:", len(content), key
           checksum = checkSum(str(key)+content[key])
           pck = self.mount_package(key, checksum, content[key])
           self.udp.sendto(pck, self.destination)
@@ -380,7 +374,6 @@ class Transmitter:
       time.sleep(0.005)
       try:
         data, addr = self.udp.recvfrom(64)
-        print 'ACK_THREAD: ', data
       except socket.timeout:
         continue
       
