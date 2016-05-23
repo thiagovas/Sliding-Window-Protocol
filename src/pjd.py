@@ -108,7 +108,7 @@ class Receiver:
     '''
     return 'ACKKCA ' + str(id_number)
   
-
+  
   def unmount_package(self, package):
     '''
       This function unmounts the package received from the transmitter.
@@ -174,6 +174,9 @@ class Receiver:
       
       cont = 0
       
+      print data
+      print acked
+      
       if data=="HelloolleH":
         self.send_ack(addr)
       elif data=="BYEEYB":
@@ -202,9 +205,11 @@ class Receiver:
         if neue_id in acked or neue_id < self.begin_window:
           self.udp.sendto(self.mount_package(neue_id), addr)
           continue
-          
+        
+        
         # If the id number is inside the limits of the window...
         if neue_id >= self.begin_window and neue_id <= self.end_window:
+          self.to_be_received-=1
           acked[neue_id] = pck[2]
         
         # Updating the window's limits accordingly.
@@ -306,6 +311,8 @@ class Transmitter:
       return
     
     content = list(content)
+    print content
+    print len(content)
     if not self.send_and_wait('ADDDDA ' + str(len(content)), 2):
       raise Exception("Client not reachable.")
     
@@ -339,6 +346,7 @@ class Transmitter:
       
       for key, value in self.time_spans.iteritems():
         if time.time()-value > 1 and value != -1:
+          print content
           print "value:", len(content), key
           checksum = checkSum(str(key)+content[key])
           pck = self.mount_package(key, checksum, content[key])
