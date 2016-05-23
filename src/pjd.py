@@ -132,9 +132,8 @@ class Receiver:
       return False
     
     pck_id = int(package[0])
-    if(pck_id >= self.begin_window and pck_id <= self.end_window):
-      if(checkSum(package[0] + package[2]) == int(package[1])):
-        return True
+    if(checkSum(package[0] + package[2]) == int(package[1])):
+      return True
     return False
 
   
@@ -160,7 +159,7 @@ class Receiver:
     self.end_window = min(nbytes-1, self.window_sz-1)
     cont=0
     
-    while len(acked) < nbytes:
+    while True:
       # 1) Receive the package
       data=""
       addr=""
@@ -176,6 +175,7 @@ class Receiver:
       
       print data
       print acked
+      print nbytes
       
       if data=="HelloolleH":
         self.send_ack(addr)
@@ -213,7 +213,9 @@ class Receiver:
           acked[neue_id] = pck[2]
         
         # Updating the window's limits accordingly.
-        while len(acked) > 0 and self.begin_window == nsmallest(1, acked)[0]:
+        while len(acked) > 0 and self.begin_window == min(acked, key=acked.get):
+          content+=acked[self.begin_window]
+          del acked[self.begin_window]
           self.udp.sendto(self.mount_package(neue_id), addr)
           self.begin_window += 1
           self.end_window += 1
@@ -311,8 +313,6 @@ class Transmitter:
       return
     
     content = list(content)
-    print content
-    print len(content)
     if not self.send_and_wait('ADDDDA ' + str(len(content)), 2):
       raise Exception("Client not reachable.")
     
@@ -341,12 +341,12 @@ class Transmitter:
     '''
     while True:
       self.mutex.acquire()
+      print self.begin_window, len(content)
       if self.begin_window == len(content):
         break
       
       for key, value in self.time_spans.iteritems():
         if time.time()-value > 1 and value != -1:
-          print content
           print "value:", len(content), key
           checksum = checkSum(str(key)+content[key])
           pck = self.mount_package(key, checksum, content[key])
@@ -370,10 +370,10 @@ class Transmitter:
       time.sleep(0.005)
       try:
         data, addr = self.udp.recvfrom(64)
-        print data
+        print 'ACK_THREAD: ', data
       except socket.timeout:
         continue
-
+      
       pck = self.unmount_package(data)
       if not self.check_package(pck):
         continue
@@ -397,16 +397,12 @@ class Transmitter:
         
         # Putting zero on the new packages to be sent to the receiver.
         while True:
-          print self.time_spans
-          print "1:", self.begin_window, self.end_window, content_sz
-	  if not self.end_window in self.time_spans: 
+          if not self.end_window in self.time_spans: 
             self.time_spans[self.end_window] = 0
           
           if self.end_window == content_sz-1:
-            print "win:", self.end_window, content_sz-1
             break
           if self.end_window >= self.begin_window+self.window_sz-1:
-            print "break 2"
             break
           self.end_window += 1
        
