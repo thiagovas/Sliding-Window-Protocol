@@ -6,7 +6,7 @@ import socket
 
 # HEY!!! ====>>>> A begins the conversation
 
-HOST = "127.0.0.14"
+HOST = "127.0.0.15"
 PORT = 5000
 udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 dest = (HOST, PORT)

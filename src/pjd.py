@@ -45,14 +45,13 @@ class Receiver:
     self.window_sz=10
     
     self.mutex = Lock()
-    self.time_limit=2
+    self.time_limit=5
     self.host = host
     self.port = port
     self.destination = (self.host, self.port)
     self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    self.udp.bind(self.destination)
     self.udp.settimeout(self.time_limit)
-    if not self.send_and_wait("HelloolleH", 10):
+    if not self.send_and_wait("HelloolleH", 20):
       raise Exception("Server not reachable.")
   
   
@@ -152,9 +151,11 @@ class Transmitter:
     self.window_sz=10
     
     self.mutex = Lock()
-    self.time_limit = 2
+    self.time_limit = 5
     self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     self.port = port
+    self.origin = ('', self.port)
+    self.udp.bind(self.origin)
     self.udp.settimeout(self.time_limit)
   
   
@@ -263,7 +264,7 @@ class Transmitter:
       tried += 1
       try:
         data, addr = self.udp.recvfrom(10)
-        self.destination = (addr, self.port)
+        self.destination = addr
       except socket.timeout:
         continue
       
