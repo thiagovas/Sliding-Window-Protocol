@@ -2,6 +2,7 @@
 # coding: utf-8
 
 import socket
+import time
 
 
 def activeOpen(srv, port):
@@ -26,7 +27,7 @@ def passiveOpen(port):
   '''
   
   ret = Transmitter(port)
-  addr = ret.accept(10)
+  addr = ret.accept(20)
   return ret, addr
 
 
@@ -37,14 +38,13 @@ class Receiver:
     This class represents the receiver of the file sent by the transmitter.
   '''
   def __init__(self, host, port):
-    self.time_limit=2
+    self.time_limit=5
     self.host = host
     self.port = port
     self.destination = (self.host, self.port)
     self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    self.udp.bind(self.destination)
     self.udp.settimeout(self.time_limit)
-    if not self.send_and_wait("HelloolleH", 10):
+    if not self.send_and_wait("HelloolleH", 20):
       raise Exception("Server not reachable.")
   
   
@@ -60,6 +60,7 @@ class Receiver:
     tried=0
     while tried < max_tries:
       self.udp.sendto(content, self.destination)
+      print 'Sent to: ', self.destination
       tried += 1
       try:
         data, addr = self.udp.recvfrom(6)
@@ -98,9 +99,14 @@ class Transmitter:
     This class represents the transmitter.
   '''
   def __init__(self, port):
-    self.time_limit = 2
+    self.time_limit = 5
     self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     self.port = port
+    self.origin = (socket.gethostbyname(socket.gethostname()), port)
+    print socket.gethostname()
+    print 'Binding: ', self.origin
+    print 'Another: ', socket.getfqdn()
+    self.udp.bind(('', port))
     self.udp.settimeout(self.time_limit)
   
   
@@ -119,7 +125,8 @@ class Transmitter:
     success=False
     tried=0
     while tried < max_tries:
-      self.udp.sendto(content, self.destination)
+      print 'Sending: ', content
+      self.udp.sendto(str(content), self.destination)
       tried += 1
       try:
         data, addr = self.udp.recvfrom(6)
@@ -134,18 +141,24 @@ class Transmitter:
   def accept(self, max_tries):
     # TODO: Check for errors on the package received.
     tried=0
+    print 'Tried: ' + str(tried) + ' max_tries: ' + str(max_tries)
     while tried < max_tries:
+      print 'Tried: ' + str(tried) + ' max_tries: ' + str(max_tries)
       tried += 1
       try:
-        data, addr = self.udp.recvfrom(10)
-        self.destination = (addr, self.port)
+        data, addr = self.udp.recvfrom(20)
+        self.destination = addr
+      	
+      	print "OIOI " + str(data) + ' ' + str(addr)
       except socket.timeout:
+        print 'Timeout'
         continue
       
+      print 'Data: ', data
       if data=="HelloolleH":
         self.send_and_wait("ACKKCA", 10)
         return addr
-    return ""
+    return "ISH"
   
   
   def close(self):

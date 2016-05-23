@@ -4,7 +4,7 @@
 import pjd                   # Importa seu módulo
 filename = 'recebido.txt'
 PORT=55555                 # Porto onde o servidor vai esperar por conexões
-SRV="localhost"      # Nome da máquina onde o servidor será executado
+SRV="10.0.0.2"      # Nome da máquina onde o servidor será executado
 
 
 s = pjd.activeOpen(SRV,PORT) # Abre uma conexão
