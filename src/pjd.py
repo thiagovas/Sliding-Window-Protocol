@@ -33,6 +33,8 @@ def passiveOpen(port):
   addr = ret.accept(50)
   return ret, addr
 
+
+
 def checkSum(content):
   content_hex = content.encode('hex')
   n = 4
@@ -53,6 +55,7 @@ def checkSum(content):
   return complement
 
 
+
 class Receiver:
   '''
     This class represents the receiver of the file sent by the transmitter.
@@ -62,7 +65,6 @@ class Receiver:
     self.end_window=0
     self.window_sz=10
     
-    self.mutex = Lock()
     self.time_limit=5
     self.host = host
     self.port = port
@@ -95,8 +97,8 @@ class Receiver:
       except socket.timeout:
         continue
     return success
- 
-
+  
+  
   def mount_package(self, id_number):
     '''
       This function receives an id_number and mounts the ACK package,
@@ -124,7 +126,6 @@ class Receiver:
     
     try: 
       int(package[0])
-      
     except ValueError:
       return False
     
@@ -151,59 +152,64 @@ class Receiver:
     # 2.1) Remember the ack package is a string formed of the following style:
     #      "ACKKCA [id]" where id is the id number received from the transmitter.
     # 3) Update the window's limits accordingly
-
-    acked = []
-
+    
+    acked = {}
+    content=""
+    self.end_window = min(nbytes-1, self.window_sz-1)
+    
+    
     while True:
       # 1) Receive the package
-      data, addr = self.udp.recvfrom(nbytes)
+      data, addr = self.udp.recvfrom(32)
       if data=="HelloolleH":
         self.send_ack(addr)
       elif data=="BYEEYB":
         self.send_ack(addr)
         break
       else:
-        self.mutex.acquire()
-        if self.begin_window >= self.window_sz:
+        if self.begin_window >= nbytes:
           break
-        self.mutex.release()
-      
-        #time.sleep(0.005)
-
+        
         pck = self.unmount_package(data)
         if not self.check_package(pck):
           continue
         neue_id = int(pck[0])
-      
-        self.mutex.acquire()
+        
+        # If the package arrived before, just return the ack.
+        # Or if the package id is less than the limits of the window.
+        if neue_id in acked or neue_id < self.begin_window:
+          self.udp.sendto(self.mount_package(neue_id), addr)
+          continue
+        
         # If the id number is inside the limits of the window...
         if neue_id >= self.begin_window and neue_id <= self.end_window:
-          heappush(acked, neue_id)
+          acked[neue_id] = pck[2]
         
         
         # Updating the window's limits accordingly.
         while len(acked) > 0 and self.begin_window == nsmallest(1, acked)[0]:
-          self.ack_thread(neue_id, addr)
-          heappop(acked)
-          self.begin_window+=1
-        
-        
-        self.mutex.release()
+          self.udp.sendto(self.mount_package(neue_id), addr)
+          self.begin_window += 1
+          self.end_window += 1
+        self.end_window = min(self.end_window, nbytes-1)
 
-        #TODO: Correct error: on ack_thread 293 - too many items to unpack
-        
-        
-        return data
+    for key, value in acked.iteritems():
+      content += value
+    return content
+  
   
   def send_ack(self, addr):
+    '''
+      Function that sends an ACK without any id;
+      Used to tell the transmitter that the receiver is alive,
+      or to say goodbye for example.
+    '''
     self.udp.sendto("ACKKCA", addr)
-
-  def ack_thread(self, id_pck , addr):
-    print "enviando " + self.mount_package(id_pck)
-    self.udp.sendto(self.mount_package(id_pck), addr)
-  
+    
+    
   def close(self):
     self.udp.close()
+  
   
 
 
@@ -305,21 +311,28 @@ class Transmitter:
     
   
   def send_thread(self, content):
-    # TODO: Remember to lock the mutex when using the limits of the window
+    '''
+      Function that keep sending data to the receiver;
+      It's executed on a separated thread.
+    '''
     while True:
       self.mutex.acquire()
       if self.begin_window == len(content):
         break
-      self.mutex.release()
       
       for key, value in self.time_spans.iteritems():
         if time.time()-value > 1 and value != -1:
           checksum = checkSum(str(key)+content[key])
-          self.udp.sendto(self.mount_package(key, checksum, content[key]), self.destination)
+          pck = self.mount_package(key, checksum, content[key])
+          self.udp.sendto(pck, self.destination)
           self.time_spans[key] = time.time()
+      self.mutex.release()
   
   
   def ack_thread(self, content_sz):
+    '''
+      Function that receives the acks and updates the window's limits.
+    '''
     acked = []
     while True:
       self.mutex.acquire()
