@@ -3,6 +3,7 @@
 
 import time
 import socket
+import checksum
 from threading import Thread, Lock
 from heapq import heappush, heappop, nsmallest
 
@@ -32,7 +33,24 @@ def passiveOpen(port):
   addr = ret.accept(50)
   return ret, addr
 
+def checkSum(content):
+  content_hex = content.encode('hex')
+  n = 4
+  words = [content_hex[i:i+n] for i in range(0, len(content_hex), n)]
+  
+  hex_sum_32 = 0
+  for w in words:
+    hex_sum_32 = hex_sum_32 + int(w, 16)
 
+    hex_sum_str = '{0:08X}'.format(hex_sum_32)
+
+    ab = int(hex_sum_str[:4], 16)
+    cd = int(hex_sum_str[4:], 16)
+
+    hex_sum_16 = ab + cd
+    complement = (~hex_sum_16 & 0xFFFF)
+
+  return complement
 
 
 class Receiver:
@@ -91,11 +109,11 @@ class Receiver:
     '''
       This function unmounts the package received from the transmitter.
     '''
-      package.split(' ')
+    return package.split(' ')
   
   
-  def check_package(self, package)
-    # TODO:
+  def check_package(self, package):
+    # TODO: ----DONE
     # * Check the id_number:
     #    - Check if it's a number
     #    - Check if the number is inside the limits of the window
@@ -103,8 +121,19 @@ class Receiver:
     # * Check the package using the checksum, make sure the checksum is generated
     #   using both the id number and the content of the package
     
-    pass
-  
+    
+    try: 
+      int(package[0])
+      
+    except ValueError:
+      return False
+    
+    pck_id = int(package[0])
+    if(pck_id >= self.begin_window and pck_id <= self.end_window):
+      if(checkSum(package[0] + package[2]) == int(package[1])):
+        return True
+    return False
+
   
   def recv(self, nbytes):
     '''
@@ -112,6 +141,8 @@ class Receiver:
     '''
     
     #TODO:
+    # Test for errors
+    # DONE:
     # Implement this function using the sliding window algorithm
     # 1) Receive the package
     # 2) Checks the package is well-formed and check it using the checksum
@@ -120,8 +151,11 @@ class Receiver:
     # 2.1) Remember the ack package is a string formed of the following style:
     #      "ACKKCA [id]" where id is the id number received from the transmitter.
     # 3) Update the window's limits accordingly
-    
+
+    acked = []
+
     while True:
+      # 1) Receive the package
       data, addr = self.udp.recvfrom(nbytes)
       if data=="HelloolleH":
         self.send_ack(addr)
@@ -129,14 +163,48 @@ class Receiver:
         self.send_ack(addr)
         break
       else:
+        self.mutex.acquire()
+        if self.begin_window >= self.window_sz:
+          break
+        self.mutex.release()
+      
+        #time.sleep(0.005)
+
+        pck = self.unmount_package(data)
+        if not self.check_package(pck):
+          continue
+        neue_id = int(pck[0])
+      
+        self.mutex.acquire()
+        # If the id number is inside the limits of the window...
+        if neue_id >= self.begin_window and neue_id <= self.end_window:
+          heappush(acked, neue_id)
+        
+        
+        # Updating the window's limits accordingly.
+        while len(acked) > 0 and self.begin_window == nsmallest(1, acked)[0]:
+          self.ack_thread(neue_id, addr)
+          heappop(acked)
+          self.begin_window+=1
+        
+        
+        self.mutex.release()
+
+        #TODO: Correct error: on ack_thread 293 - too many items to unpack
+        
+        
         return data
   
+  def send_ack(self, addr):
+    self.udp.sendto("ACKKCA", addr)
+
+  def ack_thread(self, id_pck , addr):
+    print "enviando " + self.mount_package(id_pck)
+    self.udp.sendto(self.mount_package(id_pck), addr)
   
   def close(self):
     self.udp.close()
   
-
-
 
 
 
@@ -171,7 +239,8 @@ class Transmitter:
       Simple function that receives the content of the package and 
       returns the string ready to be sent to the receiver.
     '''
-    return str(id_number) + ' ' + str(checksum) + ' ' + str(content)
+
+    return str(id_number) + ' ' + str(checksum) + ' ' + str(content) 
     
   
   def unmount_package(self, package):
@@ -184,8 +253,10 @@ class Transmitter:
       return package.split(' ')
   
   
-  def check_package(self, package)
+  def check_package(self, package):
     # TODO:
+    # Test for errors
+    # DONE:
     # * Check the id_number:
     #    - Check if it's a number
     #    - Check if the number is inside the limits of the window
@@ -193,7 +264,17 @@ class Transmitter:
     # * Check the package using the checksum, make sure the checksum is generated
     #   using both the id number and the content of the package
     
-    return true
+    try: 
+      int(package[0])
+      
+    except ValueError:
+      return False
+    
+    pck_id = int(package[0])
+    if(pck_id >= self.begin_window and pck_id <= self.end_window):
+      if(checkSum(package[0] + package[2]) == int(package[1])):
+        return True
+    return False
     
   
   def send(self, content):
@@ -233,6 +314,7 @@ class Transmitter:
       
       for key, value in self.time_spans.iteritems():
         if time.time()-value > 1 and value != -1:
+          checksum = checkSum(str(key)+content[key])
           self.udp.sendto(self.mount_package(key, checksum, content[key]), self.destination)
           self.time_spans[key] = time.time()
   
@@ -324,4 +406,3 @@ class Transmitter:
   def close(self):
     self.send_and_wait("BYEEYB", 10)
     self.udp.close()
-
